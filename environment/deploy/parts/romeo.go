@@ -5,7 +5,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ctfer-io/romeo/install/deploy/parts"
 	appsv1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/apps/v1"
 	corev1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/core/v1"
 	metav1 "github.com/pulumi/pulumi-kubernetes/sdk/v4/go/kubernetes/meta/v1"
@@ -20,8 +19,8 @@ type (
 	RomeoEnvironment struct {
 		pulumi.ResourceState
 
-		ns        *parts.Namespace
-		h         *parts.Hardening
+		ns        *Namespace
+		h         *Hardening
 		randName  *random.RandomString
 		pvc       *corev1.PersistentVolumeClaim
 		coverRand *random.RandomString
@@ -41,6 +40,8 @@ type (
 		// The claim name to mount in coverage-monitored Go pods for them to
 		// export their coverage data.
 		ClaimName pulumi.StringOutput
+
+		PodLabels pulumi.StringMapOutput
 	}
 
 	// RomeoEnvironmentArgs contains all the arguments to deploy a Romeo environment.
@@ -208,7 +209,7 @@ func (renv *RomeoEnvironment) provision(
 	// Create namespace if required
 	namespace := args.Namespace
 	if args.createNamespace {
-		renv.ns, err = parts.NewNamespace(ctx, "romeo-environment", &parts.NamespaceArgs{
+		renv.ns, err = NewNamespace(ctx, "romeo-environment", &NamespaceArgs{
 			Name: pulumi.String("romeo-environment"),
 			AdditionalLabels: pulumi.StringMap{
 				"app.kubernetes.io/component": pulumi.String("environment"),
@@ -221,7 +222,7 @@ func (renv *RomeoEnvironment) provision(
 		namespace = renv.ns.Name
 
 		if args.Harden {
-			renv.h, err = parts.NewHardening(ctx, "environment-hard", &parts.HardeningArgs{
+			renv.h, err = NewHardening(ctx, "environment-hard", &HardeningArgs{
 				Name: namespace,
 				AdditionalLabels: pulumi.StringMap{
 					"app.kubernetes.io/component": pulumi.String("environment"),
@@ -456,10 +457,12 @@ func (renv *RomeoEnvironment) outputs(ctx *pulumi.Context, args *RomeoEnvironmen
 
 	renv.ClaimName = renv.pvc.Metadata.Name().Elem()
 	renv.Port = renv.svc.Spec.Ports().Index(pulumi.Int(0)).NodePort().Elem()
+	renv.PodLabels = renv.dep.Spec.Template().Metadata().Labels()
 
 	return ctx.RegisterResourceOutputs(renv, pulumi.Map{
 		"namespace":  renv.Namespace,
 		"claim-name": renv.ClaimName,
 		"port":       renv.Port,
+		"podLabels":  renv.PodLabels,
 	})
 }
